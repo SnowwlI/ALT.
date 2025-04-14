@@ -1,65 +1,55 @@
 import streamlit as st
 from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
 
-# Carregando modelo e tokenizer
-@st.cache_resource
-def load_model():
-    tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-j-6B")
-    model = AutoModelForCausalLM.from_pretrained(
-        "EleutherAI/gpt-j-6B", 
-        torch_dtype=torch.float16, 
-        low_cpu_mem_usage=True
-    )
-    return tokenizer, model
+# Carregando o modelo GPT-Neo
+tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-2.7B")
+model = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-2.7B")
 
-tokenizer, model = load_model()
+def gerar_resposta(prompt):
+    inputs = tokenizer(prompt, return_tensors="pt")
+    outputs = model.generate(inputs["input_ids"], max_length=100, num_return_sequences=1)
+    resposta = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return resposta
 
-st.title("🤖 GPT-J - Assistente Técnico")
+# Função de exibição da conversa
+def mostrar_conversa():
+    if "mensagens" not in st.session_state:
+        st.session_state.mensagens = []
 
-# Histórico de mensagens
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+    # Mostrar a conversa
+    for mensagem in st.session_state.mensagens:
+        if mensagem["role"] == "usuario":
+            st.markdown(f"<div style='background-color: #E1F5FE; padding: 10px; border-radius: 10px;'>{mensagem['texto']}</div>", unsafe_allow_html=True)
+        elif mensagem["role"] == "ia":
+            st.markdown(f"<div style='background-color: #F1F8E9; padding: 10px; border-radius: 10px;'>{mensagem['texto']}</div>", unsafe_allow_html=True)
 
-user_input = st.chat_input("Digite sua pergunta ou prompt técnico:")
+# Função para adicionar mensagem do usuário e IA
+def adicionar_mensagem(role, texto):
+    st.session_state.mensagens.append({"role": role, "texto": texto})
 
-temperature = st.sidebar.slider("🎨 Criatividade (temperature)", 0.1, 1.0, 0.3, 0.1)
-max_length = st.sidebar.slider("📏 Comprimento da resposta (tokens)", 50, 512, 200, 10)
+# Função principal
+def main():
+    st.title("Jarvis - Assistente de Tecnologia")
 
-# Mostrar histórico
-for role, msg in st.session_state.chat_history:
-    with st.chat_message(role):
-        st.markdown(msg)
+    # Entrada de texto do usuário
+    prompt = st.text_input("Faça uma pergunta sobre tecnologia ou peças de computador:")
 
-# Quando usuário envia nova mensagem
-if user_input:
-    st.session_state.chat_history.append(("user", user_input))
-    with st.chat_message("user"):
-        st.markdown(user_input)
+    # Exibir conversa
+    mostrar_conversa()
 
-    with st.chat_message("assistant"):
-        with st.spinner("Pensando... 🧠"):
-            # Adiciona um prefixo técnico
-            prompt = f"""Você é um assistente técnico especializado. Responda de forma formal, objetiva e baseada em dados.
+    # Quando o usuário envia uma pergunta
+    if prompt:
+        # Adicionar a mensagem do usuário
+        adicionar_mensagem("usuario", prompt)
 
-Pergunta: {user_input}
-Resposta:"""
+        # Gerar a resposta da IA
+        resposta = gerar_resposta(prompt)
 
-            inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+        # Adicionar a resposta da IA
+        adicionar_mensagem("ia", resposta)
 
-            with torch.no_grad():
-                output = model.generate(
-                    **inputs,
-                    max_length=max_length,
-                    temperature=temperature,
-                    do_sample=True,
-                    top_k=50,
-                    top_p=0.95,
-                    pad_token_id=tokenizer.eos_token_id
-                )
+        # Atualizar a conversa
+        mostrar_conversa()
 
-            generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
-            resposta = generated_text.split("Resposta:")[-1].strip()
-
-        st.markdown(resposta)
-        st.session_state.chat_history.append(("assistant", resposta))
+if __name__ == "__main__":
+    main()
